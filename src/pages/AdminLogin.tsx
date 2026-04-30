@@ -4,33 +4,50 @@ import { motion } from 'motion/react';
 import { Lock, User, ShieldCheck } from 'lucide-react';
 import { Button } from '../components/Shared';
 
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../lib/firebase';
+import { useFirebase } from '../context/FirebaseContext';
+
 const AdminLogin = () => {
-  const [id, setId] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const { user, isAdmin, loading: authLoading } = useFirebase();
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  React.useEffect(() => {
+    if (!authLoading && isAdmin) {
+       navigate('/admin/dashboard');
+    }
+  }, [isAdmin, authLoading, navigate]);
+
+  const handleGoogleLogin = async () => {
     setLoading(true);
     setError('');
-
+    const provider = new GoogleAuthProvider();
     try {
-      const res = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, password }),
-      });
-
-      if (res.ok) {
-        localStorage.setItem('admin_auth', JSON.stringify({ id, password }));
-        navigate('/admin/dashboard');
+      const result = await signInWithPopup(auth, provider);
+      const user = result.user;
+      
+      // Check if user is admin
+      const adminRef = doc(db, 'admins', user.uid);
+      const adminDoc = await getDoc(adminRef);
+      
+      if (!adminDoc.exists()) {
+        // FOR DEMO: If this matches the userEmail from metadata, make them admin
+        if (user.email === 'soadjahan67@gmail.com') {
+          await setDoc(adminRef, { email: user.email, role: 'admin' });
+          navigate('/admin/dashboard');
+        } else {
+          await auth.signOut();
+          setError('Access Denied: You are not an authorized admin.');
+        }
       } else {
-        setError('Invalid credentials access denied.');
+        navigate('/admin/dashboard');
       }
-    } catch (err) {
-      setError('Connection failure.');
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Authentication failed.');
     } finally {
       setLoading(false);
     }
@@ -55,54 +72,32 @@ const AdminLogin = () => {
           <p className="text-sm text-gray-500 mt-2">Authorized Personnel Only</p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-6">
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest pl-1">Admin ID</label>
-            <div className="relative">
-              <User size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input 
-                required
-                type="text" 
-                className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-brand-red transition-all"
-                placeholder="Enter ID"
-                value={id}
-                onChange={(e) => setId(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs font-bold text-gray-500 uppercase tracking-widest pl-1">Security Key</label>
-            <div className="relative">
-              <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500" />
-              <input 
-                required
-                type="password" 
-                className="w-full bg-white/5 border border-white/10 rounded-xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-brand-red transition-all"
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-          </div>
+        <div className="space-y-6">
+          <Button 
+            onClick={handleGoogleLogin}
+            disabled={loading || authLoading}
+            className="w-full h-16 text-sm tracking-widest group flex items-center justify-center gap-4 border border-white/10 hover:border-brand-red transition-all"
+          >
+            {loading ? (
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+            ) : (
+              <>
+                <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5" />
+                SIGN IN WITH GOOGLE
+              </>
+            )}
+          </Button>
 
           {error && (
             <motion.p 
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
-              className="text-xs text-brand-red font-bold text-center italic"
+              className="text-xs text-brand-red font-bold text-center italic mt-4"
             >
               {error}
             </motion.p>
           )}
-
-          <Button 
-            disabled={loading}
-            className="w-full h-14 text-sm tracking-widest group"
-          >
-            {loading ? 'VERIFYING...' : 'ACCESS DASHBOARD'}
-          </Button>
-        </form>
+        </div>
 
         <p className="text-[10px] text-gray-600 text-center mt-8 uppercase tracking-widest">
           SYSTEM AUDIT LOGS ACTIVE

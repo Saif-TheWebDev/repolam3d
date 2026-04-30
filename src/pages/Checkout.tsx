@@ -6,6 +6,17 @@ import {
   Lock, ArrowRight, Tag, HelpCircle, ChevronRight,
   Download
 } from 'lucide-react';
+import { 
+  collection, 
+  addDoc, 
+  serverTimestamp, 
+  doc, 
+  updateDoc, 
+  increment,
+  setDoc,
+  getDoc
+} from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useCart } from '../context/CartContext';
 import { Button, SectionHeader, cn } from '../components/Shared';
 
@@ -30,17 +41,49 @@ export default function Checkout() {
   const tax = cartTotal * 0.08;
   const total = cartTotal + tax;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.agreed) return;
     
     setIsProcessing(true);
-    // Simulate payment processing
-    setTimeout(() => {
+    try {
+      // 1. Create Order
+      const orderRef = collection(db, 'orders');
+      await addDoc(orderRef, {
+        customerName: formData.fullName,
+        customerEmail: formData.email,
+        country: formData.country,
+        zipCode: formData.zip,
+        items: cart.map(item => ({
+          id: item.model.id,
+          title: item.model.title,
+          price: item.model.price + (item.materialPrice || 0),
+          material: item.selectedMaterial
+        })),
+        total: total,
+        status: 'completed',
+        createdAt: serverTimestamp()
+      });
+
+      // 2. Update Stats (Global Buys)
+      const statsRef = doc(db, 'stats', 'global');
+      const statsSnap = await getDoc(statsRef);
+      if (statsSnap.exists()) {
+        await updateDoc(statsRef, {
+          buys: increment(1)
+        });
+      } else {
+        await setDoc(statsRef, { buys: 1, cancels: 0 });
+      }
+
       clearCart();
       navigate('/order-success');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'orders');
+      alert('Order processing failed. Please try again.');
+    } finally {
       setIsProcessing(false);
-    }, 2500);
+    }
   };
 
   return (

@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "Product": {
+      "title": "3D Model Product",
+      "description": "A high-quality 3D model asset available for purchase",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "price": { "type": "number" },
+        "weight": { "type": "number" },
+        "category": { "type": "string", "enum": ["Character", "Environment", "Vehicle", "Prop", "Weapon"] },
+        "thumbnail": { "type": "string" },
+        "videoPreview": { "type": "string" },
+        "creator": { "type": "string" },
+        "stats": {
+          "type": "object",
+          "properties": {
+            "polyCount": { "type": "string" },
+            "textures": { "type": "string" },
+            "rigged": { "type": "boolean" },
+            "animated": { "type": "boolean" },
+            "uvMapped": { "type": "boolean" }
+          },
+          "required": ["polyCount", "textures", "rigged", "animated", "uvMapped"]
+        },
+        "formats": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviews": { "type": "number" },
+        "isHero": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "price", "weight", "category", "thumbnail", "creator", "stats", "formats", "description"]
+    },
+    "Order": {
+      "title": "Customer Order",
+      "description": "A record of a purchase",
+      "type": "object",
+      "properties": {
+        "customerName": { "type": "string" },
+        "customerEmail": { "type": "string" },
+        "country": { "type": "string" },
+        "zipCode": { "type": "string" },
+        "items": { "type": "array" },
+        "total": { "type": "number" },
+        "status": { "type": "string", "enum": ["completed", "cancelled", "pending"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["customerName", "customerEmail", "items", "total", "status", "createdAt"]
+    },
+    "AppStats": {
+      "title": "Application Global Statistics",
+      "description": "Aggregated metrics for the marketplace",
+      "type": "object",
+      "properties": {
+        "buys": { "type": "number" },
+        "cancels": { "type": "number" }
+      },
+      "required": ["buys", "cancels"]
+    }
+  },
+  "firestore": {
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Collection of all 3D assets"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Store individual purchase transactions"
+    },
+    "/stats/global": {
+      "schema": "AppStats",
+      "description": "Global marketplace performance metrics"
+    }
+  }
+}

@@ -2,6 +2,22 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { Plus, Trash2, Package, ShoppingCart, XCircle, LogOut, Camera, Video, DollarSign, Tag, FileText, Upload, Check, Loader2, Play } from 'lucide-react';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  addDoc, 
+  deleteDoc, 
+  doc, 
+  updateDoc, 
+  serverTimestamp,
+  getDoc,
+  setDoc
+} from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { storage } from '../lib/firebase';
+import { useFirebase } from '../context/FirebaseContext';
 import { Button, SectionHeader, cn } from '../components/Shared';
 
 const FileUpload = ({ label, icon: Icon, value, onChange, accept = "image/*" }: { 
@@ -17,20 +33,14 @@ const FileUpload = ({ label, icon: Icon, value, onChange, accept = "image/*" }: 
 
   const handleUpload = async (file: File) => {
     setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
     try {
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      });
-      const data = await res.json();
-      if (data.url) {
-        onChange(data.url);
-      }
+      const storageRef = ref(storage, `assets/${Date.now()}-${file.name}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(snapshot.ref);
+      onChange(url);
     } catch (err) {
       console.error('Upload failed:', err);
+      alert('Upload failed: ' + (err instanceof Error ? err.message : 'Unknown error'));
     } finally {
       setUploading(false);
     }
@@ -114,78 +124,81 @@ const AdminDashboard = () => {
     stats: { polyCount: '0', textures: '4K PBR', rigged: true, animated: false, uvMapped: true },
     formats: ['FBX']
   });
-
+  const { user, isAdmin, loading: authLoading } = useFirebase();
   const navigate = useNavigate();
-  const auth = JSON.parse(localStorage.getItem('admin_auth') || '{}');
 
   useEffect(() => {
-    if (!auth.id) navigate('/admin');
-    fetchData();
-  }, []);
-
-  const fetchData = async () => {
-    try {
-      const [prodRes, statsRes] = await Promise.all([
-        fetch('/api/products'),
-        fetch('/api/stats')
-      ]);
-      const prodData = await prodRes.json();
-      const statsData = await statsRes.json();
-      setProducts(prodData);
-      setStats(statsData);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+    if (!authLoading && !isAdmin) {
+      navigate('/admin');
     }
-  };
+  }, [isAdmin, authLoading]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    // Listen to products
+    const q = query(collection(db, 'products'));
+    const unsubscribeProducts = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setProducts(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+    });
+
+    // Listen to stats
+    const statsRef = doc(db, 'stats', 'global');
+    const unsubscribeStats = onSnapshot(statsRef, (doc) => {
+      if (doc.exists()) {
+        setStats(doc.data() as any);
+      }
+    });
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeStats();
+    };
+  }, [isAdmin]);
 
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/products', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth, product: { ...newProduct, price: Number(newProduct.price), weight: Number(newProduct.weight) } }),
+      const prodRef = collection(db, 'products');
+      await addDoc(prodRef, {
+        ...newProduct,
+        price: Number(newProduct.price),
+        weight: Number(newProduct.weight),
+        rating: 5.0,
+        reviews: 0,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
       });
-      if (res.ok) {
-        setShowAddForm(false);
-        fetchData();
-        setNewProduct({
-          title: '',
-          price: '',
-          offerPrice: '',
-          category: 'Character',
-          thumbnail: '',
-          videoPreview: '',
-          creator: 'Admin',
-          description: '',
-          weight: '0',
-          stats: { polyCount: '0', textures: '4K PBR', rigged: true, animated: false, uvMapped: true },
-          formats: ['FBX']
-        });
-      }
+      setShowAddForm(false);
+      setNewProduct({
+        title: '',
+        price: '',
+        offerPrice: '',
+        category: 'Character',
+        thumbnail: '',
+        videoPreview: '',
+        creator: 'Admin',
+        description: '',
+        weight: '0',
+        isHero: false,
+        stats: { polyCount: '0', textures: '4K PBR', rigged: true, animated: false, uvMapped: true },
+        formats: ['FBX']
+      });
     } catch (err) {
-      alert('Failed to add product');
+      handleFirestoreError(err, OperationType.CREATE, 'products');
     }
   };
 
   const removeProduct = async (id: string) => {
     if (!confirm('Are you sure you want to remove this product?')) return;
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth })
-      });
-      if (res.ok) {
-        fetchData();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to remove product');
-      }
+      await deleteDoc(doc(db, 'products', id));
     } catch (err) {
-      alert('Failed to remove product');
+      handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
     }
   };
 
@@ -197,23 +210,21 @@ const AdminDashboard = () => {
     }
 
     try {
-      const res = await fetch(`/api/products/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auth, updates: { isHero: !currentStatus } }),
+      await updateDoc(doc(db, 'products', id), {
+        isHero: !currentStatus,
+        updatedAt: serverTimestamp()
       });
-      if (res.ok) fetchData();
     } catch (err) {
-      alert('Failed to update hero status');
+      handleFirestoreError(err, OperationType.UPDATE, `products/${id}`);
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('admin_auth');
+  const handleLogout = async () => {
+    await auth.signOut();
     navigate('/admin');
   };
 
-  if (loading) return <div className="pt-40 text-center font-mono text-brand-red animate-pulse">BOOTING DASHBOARD...</div>;
+  if (authLoading || (isAdmin && loading)) return <div className="pt-40 text-center font-mono text-brand-red animate-pulse">BOOTING DASHBOARD...</div>;
 
   return (
     <div className="pt-32 pb-40 px-6 max-w-7xl mx-auto">

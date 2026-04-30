@@ -1,8 +1,10 @@
 import React, { useEffect } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import { ShoppingCart, Menu, X, ArrowRight, Linkedin, ShieldCheck, Mail } from 'lucide-react';
+import { ShoppingCart, Menu, X, ArrowRight, Linkedin, ShieldCheck, Mail, LogOut, User as UserIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useCart } from '../context/CartContext';
+import { useFirebase } from '../context/FirebaseContext';
+import { auth } from '../lib/firebase';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -15,6 +17,7 @@ export const Navbar = () => {
   const [isScrolled, setIsScrolled] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const { cart } = useCart();
+  const { user, isAdmin } = useFirebase();
   const location = useLocation();
 
   useEffect(() => {
@@ -55,6 +58,34 @@ export const Navbar = () => {
         </div>
 
         <div className="flex items-center gap-4">
+          {isAdmin && (
+            <Link 
+              to="/admin/dashboard" 
+              className="hidden lg:flex items-center gap-2 px-3 py-1 bg-brand-red/10 border border-brand-red/20 rounded-lg text-[10px] font-bold text-brand-red transition-all hover:bg-brand-red hover:text-white"
+            >
+              <ShieldCheck size={14} />
+              DASHBOARD
+            </Link>
+          )}
+
+          {user ? (
+            <div className="flex items-center gap-3">
+              <div className="hidden md:flex flex-col items-end">
+                <span className="text-[10px] font-bold text-white leading-none truncate max-w-[100px]">{user.displayName || 'Creator'}</span>
+                {isAdmin && <span className="text-[8px] text-brand-red font-black tracking-widest uppercase">Admin Access</span>}
+              </div>
+              <img 
+                src={user.photoURL || `https://ui-avatars.com/api/?name=${user.email}&background=random`} 
+                alt="Profile" 
+                className="w-8 h-8 rounded-full border border-white/10"
+              />
+            </div>
+          ) : (
+            <Link to="/admin" className="text-gray-500 hover:text-brand-red transition-colors">
+              <UserIcon size={20} />
+            </Link>
+          )}
+
           <Link to="/cart" className="relative p-2 text-white hover:text-brand-red transition-colors">
             <ShoppingCart size={24} />
             {cartCount > 0 && (

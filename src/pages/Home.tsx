@@ -2,8 +2,9 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { ArrowRight, Play, Box, Download, Shield } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { collection, query, where, limit, getDocs, onSnapshot } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { ProductCard } from '../components/ProductCard';
-import { MOCK_MODELS } from '../constants';
 import { SectionHeader, Button, WhatsAppIcon } from '../components/Shared';
 
 const Hero = () => {
@@ -82,18 +83,25 @@ export default function Home() {
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    const fetchHeroProducts = async () => {
-      try {
-        const res = await fetch('/api/products');
-        const data = await res.json();
-        setHeroProducts(data.filter((p: any) => p.isHero).slice(0, 3));
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchHeroProducts();
+    const q = query(
+      collection(db, 'products'),
+      where('isHero', '==', true),
+      limit(3)
+    );
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      setHeroProducts(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (

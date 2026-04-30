@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, ChevronDown, Grid, List, SlidersHorizontal, Package, Zap, RefreshCcw } from 'lucide-react';
+import { collection, query, getDocs, onSnapshot } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { ProductCard } from '../components/ProductCard';
 import { SectionHeader, Button } from '../components/Shared';
 import { clsx } from 'clsx';
@@ -22,13 +24,20 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/products')
-      .then(res => res.json())
-      .then(data => {
-        setModels(data);
-        setLoading(false);
-      })
-      .catch(err => console.error(err));
+    const q = query(collection(db, 'products'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Model3D[];
+      setModels(data);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const filteredModels = models.filter(model => {

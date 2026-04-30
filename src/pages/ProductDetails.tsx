@@ -6,7 +6,10 @@ import {
   Layers, Package, CheckCircle, Info, ChevronRight,
   ShieldCheck, Clock, Download
 } from 'lucide-react';
+import { doc, getDoc, collection, query, getDocs, limit, where } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { useCart } from '../context/CartContext';
+import { Model3D } from '../types';
 import { Button, cn, SectionHeader } from '../components/Shared';
 import { ProductCard } from '../components/ProductCard';
 
@@ -20,19 +23,39 @@ export default function ProductDetails() {
   const [relatedModels, setRelatedModels] = React.useState<any[]>([]);
   
   React.useEffect(() => {
-    setLoading(true);
-    fetch('/api/products')
-      .then(res => res.json())
-      .then(data => {
-        const found = data.find((m: any) => m.id === id);
-        setModel(found);
-        setRelatedModels(data.filter((m: any) => m.id !== id).slice(0, 3));
+    const fetchModel = async () => {
+      setLoading(true);
+      try {
+        if (!id) return;
+        
+        // Fetch current model
+        const modelRef = doc(db, 'products', id);
+        const modelSnap = await getDoc(modelRef);
+        
+        if (modelSnap.exists()) {
+          const mainModel = { id: modelSnap.id, ...modelSnap.data() } as Model3D;
+          setModel(mainModel);
+
+          // Fetch related models (same category)
+          const q = query(
+            collection(db, 'products'),
+            where('category', '==', mainModel.category),
+            limit(4)
+          );
+          const querySnapshot = await getDocs(q);
+          const related = querySnapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() }))
+            .filter(m => m.id !== id)
+            .slice(0, 3);
+          setRelatedModels(related);
+        }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, `products/${id}`);
+      } finally {
         setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
+      }
+    };
+    fetchModel();
   }, [id]);
 
   const [selectedMaterial, setSelectedMaterial] = React.useState<string | null>(null);
